@@ -41,15 +41,24 @@ export interface NachaEntryDetail {
   readonly discretionaryData?: string;
   readonly addendaRecordIndicator: 0 | 1;
   readonly traceNumber: string;
+  /** When addendaRecordIndicator is 1, optional addenda (record type 7) for this entry. */
+  readonly addenda?: NachaAddendaRecord;
 }
 
 /**
- * Optional addenda record attached to an entry detail.
- * For simplicity this library supports a single addenda per entry.
+ * Optional addenda record (NACHA record type 7) attached to an entry detail.
+ * Addenda records provide supplementary information (e.g. payment memo, invoice ref).
+ * This library supports a single addenda per entry; it immediately follows the entry (type 6).
  */
 export interface NachaAddendaRecord {
-  readonly entryDetailSequenceNumber: number;
+  /** Addenda type code (2 chars), e.g. "05" for CCD+/CTX payment info, "99" for return info. */
+  readonly addendaTypeCode: string;
+  /** Payment-related or return info; up to 80 characters. */
   readonly paymentRelatedInformation: string;
+  /** Addenda sequence number (1–9999). */
+  readonly addendaSequenceNumber: number;
+  /** Entry detail sequence number (last 7 digits of trace number). */
+  readonly entryDetailSequenceNumber: number;
 }
 
 /**
@@ -76,7 +85,6 @@ export interface NachaBatch {
   readonly originatingDfiIdentification: string;
   readonly batchNumber: number;
   readonly entries: ReadonlyArray<NachaEntryDetail>;
-  readonly addendaRecords?: ReadonlyArray<NachaAddendaRecord>;
 }
 
 /**

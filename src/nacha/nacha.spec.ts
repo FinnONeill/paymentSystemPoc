@@ -1,4 +1,5 @@
 import {
+  NachaAddendaRecord,
   NachaEntryDetail,
   NachaFile,
   ServiceClassCode,
@@ -82,6 +83,27 @@ describe('NACHA library', () => {
         receivingDfiRoutingNumber: '1234567',
       }),
     ).toThrow(/8 digits/);
+
+    expect(() =>
+      validateEntryDetail({
+        ...entry,
+        addendaRecordIndicator: 1,
+        addenda: undefined,
+      }),
+    ).toThrow(/addenda record indicator 1 must have an addenda/);
+
+    expect(() =>
+      validateEntryDetail({
+        ...entry,
+        addendaRecordIndicator: 0,
+        addenda: {
+          addendaTypeCode: '05',
+          paymentRelatedInformation: 'X',
+          addendaSequenceNumber: 1,
+          entryDetailSequenceNumber: 1,
+        },
+      }),
+    ).toThrow(/addenda record indicator 0 must not have an addenda/);
   });
 
   it('validates batches and files', () => {
@@ -349,6 +371,48 @@ describe('NACHA library', () => {
     expect(parsedEntry.traceNumber).toBe(originalEntry.traceNumber);
   });
 
+  it('round-trips a file with entry detail addenda (record type 7)', () => {
+    const file = buildValidFile();
+    const batch = file.batches[0];
+    const entry = batch?.entries[0];
+    if (!batch || !entry) throw new Error('expected batch and entry');
+
+    const addenda: NachaAddendaRecord = {
+      addendaTypeCode: '05',
+      paymentRelatedInformation: 'Invoice #12345 Payment for services',
+      addendaSequenceNumber: 1,
+      entryDetailSequenceNumber: 1,
+    };
+    const entryWithAddenda: NachaEntryDetail = {
+      ...entry,
+      addendaRecordIndicator: 1,
+      addenda,
+    };
+    const fileWithAddenda: NachaFile = {
+      ...file,
+      batches: [{ ...batch, entries: [entryWithAddenda] }],
+    };
+
+    const text = serializeNachaFile(fileWithAddenda);
+    const lines = text.split('\n');
+    expect(lines[2][0]).toBe('6');
+    expect(lines[3][0]).toBe('7');
+    expect(lines[3].slice(1, 3)).toBe('05');
+    expect(lines[3].slice(3, 43).trim()).toBe(
+      'Invoice #12345 Payment for services',
+    );
+
+    const parsed = parseNachaFile(text);
+    const parsedEntry = parsed.batches[0]?.entries[0];
+    expect(parsedEntry?.addenda).toBeDefined();
+    expect(parsedEntry?.addenda?.addendaTypeCode).toBe('05');
+    expect(parsedEntry?.addenda?.paymentRelatedInformation.trim()).toBe(
+      'Invoice #12345 Payment for services',
+    );
+    expect(parsedEntry?.addenda?.addendaSequenceNumber).toBe(1);
+    expect(parsedEntry?.addenda?.entryDetailSequenceNumber).toBe(1);
+  });
+
   it('throws on malformed contents or record ordering', () => {
     expect(() => parseNachaFile('')).toThrow(/empty/);
 
@@ -439,21 +503,32 @@ describe('NACHA library', () => {
     expect(() => parseNachaFile(withBadEntry)).toThrow(/Entry detail record/);
   });
 
-  it('throws for unsupported record type and batch control before header', () => {
+  it('throws for addenda record in invalid position and batch control before header', () => {
     const file = buildValidFile();
     const text = serializeNachaFile(file);
     const lines = text.split('\n');
 
-    // Introduce an unknown record type code "7".
-    const unknownRecord = '7'.padEnd(94, 'X');
-    const withUnknown = [lines[0], unknownRecord, ...lines.slice(1)].join('\n');
-    expect(() => parseNachaFile(withUnknown)).toThrow(/Unsupported record type/);
+    // Addenda (record type 7) before any batch header is invalid.
+    const addendaRecord = '7'.padEnd(94, 'X');
+    const withAddendaFirst = [lines[0], addendaRecord, ...lines.slice(1)].join(
+      '\n',
+    );
+    expect(() => parseNachaFile(withAddendaFirst)).toThrow(
+      /Addenda record encountered before any batch header/,
+    );
 
     // Put batch control before any batch header.
     const batchControlFirst = [lines[0], lines[3], lines[1], lines[2], lines[4]].join(
       '\n',
     );
     expect(() => parseNachaFile(batchControlFirst)).toThrow(/Batch control record/);
+
+    // Truly unsupported record type (e.g. "4") still throws.
+    const unknownRecord = '4'.padEnd(94, 'X');
+    const withUnknown = [lines[0], lines[1], unknownRecord, ...lines.slice(2)].join(
+      '\n',
+    );
+    expect(() => parseNachaFile(withUnknown)).toThrow(/Unsupported record type/);
   });
 
   it('defaults missing file creation time to 0000 in the header', () => {

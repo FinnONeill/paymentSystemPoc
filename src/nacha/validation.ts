@@ -1,4 +1,5 @@
 import {
+  NachaAddendaRecord,
   NachaBatch,
   NachaEntryDetail,
   NachaFile,
@@ -92,6 +93,46 @@ export function validateEntryDetail(entry: NachaEntryDetail): void {
   if (!/^[0-9]{15}$/.test(entry.traceNumber)) {
     throw new Error('Trace number must be 15 digits');
   }
+
+  if (entry.addendaRecordIndicator === 1 && !entry.addenda) {
+    throw new Error(
+      'Entry with addenda record indicator 1 must have an addenda record',
+    );
+  }
+  if (entry.addendaRecordIndicator === 0 && entry.addenda) {
+    throw new Error(
+      'Entry with addenda record indicator 0 must not have an addenda record',
+    );
+  }
+  if (entry.addenda) {
+    validateAddendaRecord(entry.addenda);
+  }
+}
+
+/**
+ * Validates a single addenda record (type 7).
+ */
+function validateAddendaRecord(addenda: NachaAddendaRecord): void {
+  if (addenda.addendaTypeCode.length !== 2) {
+    throw new Error('Addenda type code must be 2 characters');
+  }
+  if (addenda.paymentRelatedInformation.length > 80) {
+    throw new Error(
+      'Payment-related information must not exceed 80 characters',
+    );
+  }
+  assertInRange(
+    addenda.addendaSequenceNumber,
+    1,
+    9999,
+    'Addenda sequence number',
+  );
+  assertInRange(
+    addenda.entryDetailSequenceNumber,
+    1,
+    9_999_999,
+    'Entry detail sequence number',
+  );
 }
 
 /**

@@ -1,4 +1,9 @@
-import { NachaBatch, NachaEntryDetail, NachaFile } from './types';
+import {
+  NachaAddendaRecord,
+  NachaBatch,
+  NachaEntryDetail,
+  NachaFile,
+} from './types';
 import { validateBatch, validateFile } from './validation';
 
 /**
@@ -123,6 +128,35 @@ function formatEntryDetail(entry: NachaEntryDetail, tracePrefix: string): string
 }
 
 /**
+ * Formats an entry detail addenda record (record type code 7).
+ * NACHA: positions 1-1=record type, 2-3=addenda type code, 4-83=payment info (80 chars),
+ * 84-87=addenda sequence number, 88-94=entry detail sequence number.
+ */
+function formatAddendaRecord(addenda: NachaAddendaRecord): string {
+  const recordTypeCode = '7';
+  const addendaTypeCode = addenda.addendaTypeCode.padEnd(2, ' ').slice(0, 2);
+  const paymentRelatedInformation = padRight(
+    addenda.paymentRelatedInformation,
+    80,
+  );
+  const addendaSequenceNumber = addenda.addendaSequenceNumber
+    .toString()
+    .padStart(4, '0');
+  const entryDetailSequenceNumber = addenda.entryDetailSequenceNumber
+    .toString()
+    .padStart(7, '0');
+
+  const line =
+    recordTypeCode +
+    addendaTypeCode +
+    paymentRelatedInformation +
+    addendaSequenceNumber +
+    entryDetailSequenceNumber;
+
+  return line.padEnd(94, ' ');
+}
+
+/**
  * Formats a batch control record (record type code 8) aggregating all entries.
  */
 function formatBatchControl(
@@ -131,9 +165,10 @@ function formatBatchControl(
 ): string {
   const recordTypeCode = '8';
   const serviceClassCode = batch.serviceClassCode.toString().padStart(3, '0');
-  const entryAddendaCount = batch.entries.length
-    .toString()
-    .padStart(6, '0');
+  const entryAndAddendaCount =
+    batch.entries.length +
+    batch.entries.filter((e) => e.addenda !== undefined).length;
+  const entryAddendaCount = entryAndAddendaCount.toString().padStart(6, '0');
 
   const entryHash = batch.entries
     .reduce((sum, entry) => {
@@ -185,10 +220,14 @@ function formatFileControl(file: NachaFile): string {
   const recordTypeCode = '9';
   const batchCount = file.batches.length.toString().padStart(6, '0');
   const blockCount = '000001';
-  const entryAddendaCount = file.batches
-    .reduce((sum, batch) => sum + batch.entries.length, 0)
-    .toString()
-    .padStart(8, '0');
+  const entryAndAddendaTotal = file.batches.reduce(
+    (sum, batch) =>
+      sum +
+      batch.entries.length +
+      batch.entries.filter((e) => e.addenda !== undefined).length,
+    0,
+  );
+  const entryAddendaCount = entryAndAddendaTotal.toString().padStart(8, '0');
 
   const entryHashTotal = file.batches.reduce((fileSum, batch) => {
     const batchSum = batch.entries.reduce((sum, entry) => {
@@ -247,6 +286,9 @@ export function serializeNachaFile(file: NachaFile): string {
     const tracePrefix = batch.originatingDfiIdentification;
     batch.entries.forEach((entry) => {
       lines.push(formatEntryDetail(entry, tracePrefix));
+      if (entry.addenda) {
+        lines.push(formatAddendaRecord(entry.addenda));
+      }
     });
 
     lines.push(formatBatchControl(batch, batchNumber));

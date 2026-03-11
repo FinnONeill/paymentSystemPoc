@@ -2,6 +2,7 @@ import {
   NachaBatch,
   NachaEntryDetail,
   NachaFile,
+  NachaAddendaRecord,
   ServiceClassCode,
   TransactionCode,
 } from './types';
@@ -156,6 +157,34 @@ function parseEntryDetail(line: string): NachaEntryDetail {
 }
 
 /**
+ * Parses an entry detail addenda record (type 7) into a `NachaAddendaRecord`.
+ * NACHA positions: 1=record type, 2-3=addenda type code, 4-83=payment info (80 chars),
+ * 84-87=addenda sequence number, 88-94=entry detail sequence number.
+ */
+function parseAddendaRecord(line: string): NachaAddendaRecord {
+  if (line.length < 94) {
+    throw new Error('Addenda record must be 94 characters');
+  }
+
+  const recordTypeCode = slice(line, 0, 1);
+  if (recordTypeCode !== '7') {
+    throw new Error('Addenda record must have type code 7');
+  }
+
+  const addendaTypeCode = slice(line, 1, 3);
+  const paymentRelatedInformation = normalizeText(slice(line, 3, 83));
+  const addendaSequenceNumber = parseNumeric(slice(line, 83, 87));
+  const entryDetailSequenceNumber = parseNumeric(slice(line, 87, 94));
+
+  return {
+    addendaTypeCode,
+    paymentRelatedInformation,
+    addendaSequenceNumber,
+    entryDetailSequenceNumber,
+  };
+}
+
+/**
  * Parses a NACHA file string into a fully validated `NachaFile` object.
  */
 export function parseNachaFile(contents: string): NachaFile {
@@ -195,6 +224,31 @@ export function parseNachaFile(contents: string): NachaFile {
         ...batch,
         entries: [...batch.entries, entry],
       };
+    } else if (recordTypeCode === '7') {
+      if (!currentBatch) {
+        throw new Error(
+          'Addenda record encountered before any batch header',
+        );
+      }
+      const batch = currentBatch as NachaBatch;
+      const lastEntryIndex = batch.entries.length - 1;
+      if (lastEntryIndex < 0) {
+        throw new Error('Addenda record must follow an entry detail record');
+      }
+      const lastEntry = batch.entries[lastEntryIndex]!;
+      if (lastEntry.addendaRecordIndicator !== 1) {
+        throw new Error(
+          'Addenda record may only follow an entry with addenda record indicator 1',
+        );
+      }
+      if (lastEntry.addenda) {
+        throw new Error('Only one addenda record per entry is supported');
+      }
+      const addenda = parseAddendaRecord(line);
+      const entryWithAddenda: NachaEntryDetail = { ...lastEntry, addenda };
+      const newEntries = [...batch.entries];
+      newEntries[lastEntryIndex] = entryWithAddenda;
+      currentBatch = { ...batch, entries: newEntries };
     } else if (recordTypeCode === '8') {
       if (!currentBatch) {
         throw new Error(
