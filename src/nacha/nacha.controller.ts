@@ -7,7 +7,11 @@ import {
   HttpCode,
   HttpStatus,
   Header,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { NachaService } from './nacha.service';
 import type { NachaFile } from './types';
 
@@ -55,5 +59,25 @@ export class NachaController {
     valid: boolean;
   } {
     return this.nachaService.validateRoutingNumber(routingNumber);
+  }
+
+  /**
+   * POST /nacha/validate/file
+   * Accepts a NACHA file upload (multipart/form-data, field name "file").
+   * Returns { valid: true, file } if the file parses and validates, or { valid: false, error } otherwise.
+   */
+  @Post('validate/file')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file'))
+  validateFile(
+    @UploadedFile() file: { buffer: Buffer } | undefined,
+  ):
+    | { valid: true; file: NachaFile }
+    | { valid: false; error: string } {
+    if (!file?.buffer) {
+      throw new BadRequestException('No file uploaded. Send as multipart/form-data with field name "file".');
+    }
+    const content = file.buffer.toString('utf-8');
+    return this.nachaService.validateFileContent(content);
   }
 }

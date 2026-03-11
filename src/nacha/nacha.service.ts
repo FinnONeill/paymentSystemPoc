@@ -38,6 +38,21 @@ export class NachaService {
     return { valid: isValidRoutingNumber(routingNumber) };
   }
 
+  /**
+   * Validates NACHA file content by parsing it. Returns valid flag and parsed file or error.
+   */
+  validateFileContent(
+    content: string,
+  ): { valid: true; file: NachaFile } | { valid: false; error: string } {
+    try {
+      const file = parseNachaFile(content);
+      return { valid: true, file };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { valid: false, error: message };
+    }
+  }
+
   private buildSampleFile(): NachaFile {
     return {
       immediateDestinationRoutingNumber: '0011000015',
