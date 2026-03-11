@@ -64,6 +64,15 @@ export interface NachaBatch {
   readonly companyEntryDescription: string;
   readonly companyDescriptiveDate?: string;
   readonly effectiveEntryDate: string;
+  /**
+   * Optional settlement date in Julian format (DDD) as carried in the batch header.
+   * Many originators leave this blank, so it is modeled as optional.
+   */
+  readonly settlementDateJulian?: string;
+  /**
+   * Originator status code from the batch header (typically "1").
+   */
+  readonly originatorStatusCode?: string;
   readonly originatingDfiIdentification: string;
   readonly batchNumber: number;
   readonly entries: ReadonlyArray<NachaEntryDetail>;

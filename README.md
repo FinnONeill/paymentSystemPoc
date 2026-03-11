@@ -23,7 +23,7 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Strongly typed, reusable NACHA ACH file library implemented in TypeScript and exposed from the `src/nacha` module. It supports creating and parsing NACHA files with validation and is designed to be easily extended by future developers.
 
 ## Project setup
 
@@ -47,15 +47,73 @@ $ npm run start:prod
 ## Run tests
 
 ```bash
-# unit tests
+# unit tests (includes NACHA library)
 $ npm run test
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
+# NACHA library coverage report
 $ npm run test:cov
 ```
+
+## NACHA library usage
+
+The NACHA library lives under `src/nacha` and is exported via `src/nacha/index.ts`.
+
+- **Create a file**: build a `NachaFile` object and pass it to `serializeNachaFile` to obtain a 94-character-line NACHA string.
+- **Parse a file**: pass an existing NACHA file string to `parseNachaFile` to receive a strongly typed `NachaFile` instance.
+- **Validate**: call `validateFile`, `validateBatch`, or `validateEntryDetail` directly when you want granular validation errors before serialization.
+
+Example (inside any Nest provider or standalone script):
+
+```ts
+import {
+  serializeNachaFile,
+  parseNachaFile,
+  ServiceClassCode,
+  TransactionCode,
+  NachaFile,
+} from './nacha';
+
+const file: NachaFile = {
+  immediateDestinationRoutingNumber: '0011000015',
+  immediateOriginRoutingNumber: '0011000015',
+  immediateDestinationName: 'DEST BANK',
+  immediateOriginName: 'ORIGIN BANK',
+  fileCreationDate: '260101',
+  fileCreationTime: '0101',
+  fileIdModifier: 'A',
+  batches: [
+    {
+      serviceClassCode: ServiceClassCode.MixedDebitsAndCredits,
+      companyName: 'ACME CORP',
+      companyIdentification: '1234567890',
+      standardEntryClassCode: 'PPD',
+      companyEntryDescription: 'PAYROLL',
+      effectiveEntryDate: '260102',
+      originatingDfiIdentification: '11000015',
+      batchNumber: 1,
+      entries: [
+        {
+          transactionCode: TransactionCode.CheckingCredit,
+          receivingDfiRoutingNumber: '01100001',
+          receivingDfiCheckDigit: '5',
+          dfiAccountNumber: '123456789',
+          amountCents: 12345,
+          individualIdNumber: 'ID123',
+          individualName: 'JOHN DOE',
+          discretionaryData: 'AA',
+          addendaRecordIndicator: 0,
+          traceNumber: '110000150000001',
+        },
+      ],
+    },
+  ],
+};
+
+const nachaText = serializeNachaFile(file);
+const parsedBack = parseNachaFile(nachaText);
+```
+
+The implementation focuses on the most common record types (file header, batch header, entry detail, batch control, file control) and enforces field lengths, numeric formats, and routing number validity. Additional record types and validation rules can be added by extending `src/nacha/types.ts` and updating the formatter/parser accordingly.
 
 ## Deployment
 
