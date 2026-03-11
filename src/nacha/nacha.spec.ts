@@ -450,5 +450,118 @@ describe('NACHA library', () => {
     );
     expect(() => parseNachaFile(batchControlFirst)).toThrow(/Batch control record/);
   });
+
+  it('defaults missing file creation time to 0000 in the header', () => {
+    const file = buildValidFile();
+    // Omit the optional fileCreationTime to exercise the defaulting branch.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { fileCreationTime: _ignored, ...rest } = file;
+    const withoutTime: NachaFile = {
+      ...rest,
+    };
+
+    const text = serializeNachaFile(withoutTime);
+    const [header] = text.split('\n');
+
+    expect(header).toHaveLength(94);
+    // HHMM field occupies columns 29–32 in the file header.
+    expect(header.slice(29, 33)).toBe('0000');
+  });
+
+  it('handles optional entry text fields when omitted during formatting', () => {
+    const file = buildValidFile();
+    const batch = file.batches[0];
+    if (!batch) {
+      throw new Error('Expected batch to be defined');
+    }
+    const baseEntry = batch.entries[0];
+    if (!baseEntry) {
+      throw new Error('Expected entry to be defined');
+    }
+
+    const entryWithoutOptionals: NachaEntryDetail = {
+      ...baseEntry,
+      individualIdNumber: undefined,
+      discretionaryData: undefined,
+    };
+
+    const minimalFile: NachaFile = {
+      ...file,
+      batches: [
+        {
+          ...batch,
+          entries: [entryWithoutOptionals],
+        },
+      ],
+    };
+
+    const text = serializeNachaFile(minimalFile);
+    const lines = text.split('\n');
+    const entryLine = lines[2];
+
+    expect(entryLine).toHaveLength(94);
+    // Individual ID number and discretionary data fields should be space-filled.
+    expect(entryLine.slice(39, 54).trim()).toBe('');
+    expect(entryLine.slice(76, 78).trim()).toBe('');
+  });
+
+  it('treats all-space numeric fields as zero when parsing', () => {
+    const file = buildValidFile();
+    const text = serializeNachaFile(file);
+    const lines = text.split('\n');
+
+    const originalEntry = lines[2];
+    if (!originalEntry) {
+      throw new Error('Expected entry line to be defined');
+    }
+
+    // Overwrite the amount field (columns 29–38) with spaces so that the
+    // parser sees an all-space numeric field and normalizes it to 0.
+    const spacesForAmount = ' '.repeat(10);
+    const entryWithSpaces =
+      originalEntry.slice(0, 29) + spacesForAmount + originalEntry.slice(39);
+
+    const mutated = [lines[0], lines[1], entryWithSpaces, lines[3], lines[4]].join(
+      '\n',
+    );
+
+    const parsed = parseNachaFile(mutated);
+    const parsedEntry = parsed.batches[0]!.entries[0]!;
+    expect(parsedEntry.amountCents).toBe(0);
+  });
+
+  it('rejects when the first record is not a file header', () => {
+    const file = buildValidFile();
+    const text = serializeNachaFile(file);
+    const lines = text.split('\n');
+    const header = lines[0];
+    if (!header) {
+      throw new Error('Expected header line to be defined');
+    }
+
+    const badHeader = '0' + header.slice(1);
+    const mutated = [badHeader, ...lines.slice(1)].join('\n');
+
+    expect(() => parseNachaFile(mutated)).toThrow(
+      /First record must be a file header/,
+    );
+  });
+
+  it('infers the end of the final batch when no batch control record is present', () => {
+    const file = buildValidFile();
+    const text = serializeNachaFile(file);
+    const lines = text.split('\n');
+
+    // Remove the batch control (record type 8) so that the parser encounters
+    // the file control (record type 9) while a batch is still "open". This
+    // exercises the branch that pushes a trailing batch after the main loop.
+    const withoutBatchControl = [lines[0], lines[1], lines[2], lines[4]].join(
+      '\n',
+    );
+
+    const parsed = parseNachaFile(withoutBatchControl);
+    expect(parsed.batches).toHaveLength(1);
+    expect(parsed.batches[0]!.entries).toHaveLength(1);
+  });
 });
 
