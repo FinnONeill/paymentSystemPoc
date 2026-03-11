@@ -1,4 +1,5 @@
 import {
+  NachaEntryDetail,
   NachaFile,
   ServiceClassCode,
   TransactionCode,
@@ -187,7 +188,7 @@ describe('NACHA library', () => {
     expect(() =>
       validateBatch({
         ...baseBatch,
-        standardEntryClassCode: 'PpD',
+        standardEntryClassCode: 'PpD' as any,
       }),
     ).toThrow(/three uppercase letters/);
 
@@ -337,9 +338,13 @@ describe('NACHA library', () => {
       original.immediateDestinationRoutingNumber,
     );
     expect(parsed.batches).toHaveLength(1);
-    expect(parsed.batches[0]!.entries).toHaveLength(1);
-    const parsedEntry = parsed.batches[0]!.entries[0]!;
-    const originalEntry = original.batches[0]!.entries[0]!;
+    const parsedBatch = parsed.batches[0];
+    const originalBatch = original.batches[0];
+    if (!parsedBatch || !originalBatch) throw new Error('expected one batch');
+    expect(parsedBatch.entries).toHaveLength(1);
+    const parsedEntry = parsedBatch.entries[0];
+    const originalEntry = originalBatch.entries[0];
+    if (!parsedEntry || !originalEntry) throw new Error('expected one entry');
     expect(parsedEntry.amountCents).toBe(originalEntry.amountCents);
     expect(parsedEntry.traceNumber).toBe(originalEntry.traceNumber);
   });
@@ -526,7 +531,9 @@ describe('NACHA library', () => {
     );
 
     const parsed = parseNachaFile(mutated);
-    const parsedEntry = parsed.batches[0]!.entries[0]!;
+    const batch = parsed.batches[0];
+    const parsedEntry = batch?.entries[0];
+    if (!batch || !parsedEntry) throw new Error('expected batch and entry');
     expect(parsedEntry.amountCents).toBe(0);
   });
 
@@ -561,7 +568,9 @@ describe('NACHA library', () => {
 
     const parsed = parseNachaFile(withoutBatchControl);
     expect(parsed.batches).toHaveLength(1);
-    expect(parsed.batches[0]!.entries).toHaveLength(1);
+    const batch = parsed.batches[0];
+    if (!batch) throw new Error('expected one batch');
+    expect(batch.entries).toHaveLength(1);
   });
 });
 
