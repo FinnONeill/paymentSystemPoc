@@ -13,11 +13,7 @@ describe('KafkaManagerService', () => {
     (KafkaManager as unknown as jest.Mock).mockImplementation(() => ({
       produce: produceMock,
       ensureSchemaCompatibility: ensureSchemaCompatibilityMock,
-      options: {
-        topicConfig: {
-          topic: 'test-topic',
-        },
-      },
+      defaultTopic: 'test-topic',
     }));
 
     const module: TestingModule = await Test.createTestingModule({

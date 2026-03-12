@@ -57,7 +57,7 @@ export class KafkaManagerService {
     }
 
     await this.manager.produce({
-      topic: this.manager['options'].topicConfig.topic,
+      topic: this.manager.defaultTopic,
       value: { id },
     });
   }

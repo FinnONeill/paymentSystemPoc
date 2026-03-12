@@ -29,6 +29,10 @@ export class KafkaManager<TPayload extends Record<string, unknown>> {
     });
   }
 
+  get defaultTopic(): string {
+    return this.options.topicConfig.topic;
+  }
+
   async ensureSchemaCompatibility(): Promise<void> {
     await this.registry.validateOrRegisterSchema(this.schema);
   }
