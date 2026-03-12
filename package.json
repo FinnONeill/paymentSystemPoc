@@ -20,9 +20,12 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@aws-sdk/client-glue": "^3.1007.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
+    "avsc": "^5.7.9",
+    "kafkajs": "^2.2.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
@@ -63,7 +66,8 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "nacha/**/*.(t|j)s"
+      "nacha/**/*.(t|j)s",
+      "kafkaManager/**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
     "coverageThreshold": {
