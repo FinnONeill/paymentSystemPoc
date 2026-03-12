@@ -32,7 +32,7 @@ function parseNumeric(value: string): number {
   }
   const numeric = Number.parseInt(trimmed, 10);
   if (Number.isNaN(numeric)) {
-    throw new Error(`Invalid numeric value: "${value}"`);
+    throw new TypeError(`Invalid numeric value: "${value}"`);
   }
   return numeric;
 }
@@ -187,6 +187,120 @@ function parseAddendaRecord(line: string): NachaAddendaRecord {
 /**
  * Parses a NACHA file string into a fully validated `NachaFile` object.
  */
+type ParseState = {
+  batches: NachaBatch[];
+  currentBatch: NachaBatch | null;
+  done: boolean;
+};
+
+function startNewBatch(state: ParseState, line: string): ParseState {
+  const batchBase = parseBatchHeader(line);
+  const batches = state.currentBatch
+    ? [...state.batches, state.currentBatch]
+    : state.batches;
+
+  return {
+    batches,
+    currentBatch: { ...batchBase, entries: [] },
+    done: false,
+  };
+}
+
+function appendEntryDetail(state: ParseState, line: string): ParseState {
+  if (!state.currentBatch) {
+    throw new Error(
+      'Entry detail record encountered before any batch header',
+    );
+  }
+
+  const entry = parseEntryDetail(line);
+
+  return {
+    ...state,
+    currentBatch: {
+      ...state.currentBatch,
+      entries: [...state.currentBatch.entries, entry],
+    },
+  };
+}
+
+function attachAddendaRecord(state: ParseState, line: string): ParseState {
+  if (!state.currentBatch) {
+    throw new Error(
+      'Addenda record encountered before any batch header',
+    );
+  }
+
+  const batch = state.currentBatch;
+  const lastEntryIndex = batch.entries.length - 1;
+
+  if (lastEntryIndex < 0) {
+    throw new Error('Addenda record must follow an entry detail record');
+  }
+
+  const lastEntry = batch.entries[lastEntryIndex];
+
+  if (lastEntry.addendaRecordIndicator !== 1) {
+    throw new Error(
+      'Addenda record may only follow an entry with addenda record indicator 1',
+    );
+  }
+
+  if (lastEntry.addenda) {
+    throw new Error('Only one addenda record per entry is supported');
+  }
+
+  const addenda = parseAddendaRecord(line);
+  const entryWithAddenda: NachaEntryDetail = { ...lastEntry, addenda };
+  const newEntries = [...batch.entries];
+  newEntries[lastEntryIndex] = entryWithAddenda;
+
+  return {
+    ...state,
+    currentBatch: { ...batch, entries: newEntries },
+  };
+}
+
+function closeBatch(state: ParseState): ParseState {
+  if (!state.currentBatch) {
+    throw new Error(
+      'Batch control record encountered before any batch header',
+    );
+  }
+
+  return {
+    batches: [...state.batches, state.currentBatch],
+    currentBatch: null,
+    done: false,
+  };
+}
+
+function markFileControl(state: ParseState): ParseState {
+  return {
+    ...state,
+    done: true,
+  };
+}
+
+function processRecordLine(line: string, state: ParseState): ParseState {
+  const recordTypeCode = line[0];
+
+  switch (recordTypeCode) {
+    case '5':
+      return startNewBatch(state, line);
+    case '6':
+      return appendEntryDetail(state, line);
+    case '7':
+      return attachAddendaRecord(state, line);
+    case '8':
+      return closeBatch(state);
+    case '9':
+      return markFileControl(state);
+    default:
+      throw new Error(`Unsupported record type code: ${recordTypeCode}`);
+  }
+}
+
 export function parseNachaFile(contents: string): NachaFile {
   const rawLines = contents
     .split(/\r?\n/)
@@ -196,81 +310,31 @@ export function parseNachaFile(contents: string): NachaFile {
     throw new Error('NACHA file is empty');
   }
 
-  const fileHeaderLine = rawLines[0]!;
+  const fileHeaderLine = rawLines[0];
   const fileBase = parseFileHeader(fileHeaderLine);
 
-  const batches: NachaBatch[] = [];
-  let currentBatch: NachaBatch | null = null;
+  let state: ParseState = {
+    batches: [],
+    currentBatch: null,
+    done: false,
+  };
 
-  for (let i = 1; i < rawLines.length; i += 1) {
-    const line = rawLines[i]!;
-    const recordTypeCode = line[0];
-
-    if (recordTypeCode === '5') {
-      if (currentBatch) {
-        batches.push(currentBatch);
-      }
-      const batchBase = parseBatchHeader(line);
-      currentBatch = { ...batchBase, entries: [] };
-    } else if (recordTypeCode === '6') {
-      if (!currentBatch) {
-        throw new Error(
-          'Entry detail record encountered before any batch header',
-        );
-      }
-      const entry = parseEntryDetail(line);
-      const batch = currentBatch as NachaBatch;
-      currentBatch = {
-        ...batch,
-        entries: [...batch.entries, entry],
-      };
-    } else if (recordTypeCode === '7') {
-      if (!currentBatch) {
-        throw new Error(
-          'Addenda record encountered before any batch header',
-        );
-      }
-      const batch = currentBatch as NachaBatch;
-      const lastEntryIndex = batch.entries.length - 1;
-      if (lastEntryIndex < 0) {
-        throw new Error('Addenda record must follow an entry detail record');
-      }
-      const lastEntry = batch.entries[lastEntryIndex]!;
-      if (lastEntry.addendaRecordIndicator !== 1) {
-        throw new Error(
-          'Addenda record may only follow an entry with addenda record indicator 1',
-        );
-      }
-      if (lastEntry.addenda) {
-        throw new Error('Only one addenda record per entry is supported');
-      }
-      const addenda = parseAddendaRecord(line);
-      const entryWithAddenda: NachaEntryDetail = { ...lastEntry, addenda };
-      const newEntries = [...batch.entries];
-      newEntries[lastEntryIndex] = entryWithAddenda;
-      currentBatch = { ...batch, entries: newEntries };
-    } else if (recordTypeCode === '8') {
-      if (!currentBatch) {
-        throw new Error(
-          'Batch control record encountered before any batch header',
-        );
-      }
-      batches.push(currentBatch);
-      currentBatch = null;
-    } else if (recordTypeCode === '9') {
-      break;
-    } else {
-      throw new Error(`Unsupported record type code: ${recordTypeCode}`);
-    }
+  for (let i = 1; i < rawLines.length && !state.done; i += 1) {
+    const line = rawLines[i];
+    state = processRecordLine(line, state);
   }
 
-  if (currentBatch) {
-    batches.push(currentBatch);
+  if (state.currentBatch) {
+    state = {
+      ...state,
+      batches: [...state.batches, state.currentBatch],
+      currentBatch: null,
+    };
   }
 
   const result: NachaFile = {
     ...fileBase,
-    batches,
+    batches: state.batches,
   };
 
   validateFile(result);

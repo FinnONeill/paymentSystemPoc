@@ -10,7 +10,7 @@ import {
  * Validates that a string consists only of digits.
  */
 function isNumeric(value: string): boolean {
-  return /^[0-9]+$/.test(value);
+  return /^\d+$/.test(value);
 }
 
 /**
@@ -18,7 +18,7 @@ function isNumeric(value: string): boolean {
  * Returns true when the routing number (9 digits) is structurally valid.
  */
 export function isValidRoutingNumber(routingNumber: string): boolean {
-  if (!/^[0-9]{9}$/.test(routingNumber)) {
+  if (!/^\d{9}$/.test(routingNumber)) {
     return false;
   }
 
@@ -27,7 +27,7 @@ export function isValidRoutingNumber(routingNumber: string): boolean {
   // Weighted sum algorithm defined by the ABA (positions 1–9).
   const weights = [3, 7, 1, 3, 7, 1, 3, 7, 1];
   const sum = digits.reduce(
-    (acc, digit, index) => acc + digit * weights[index]!,
+    (acc, digit, index) => acc + digit * weights[index],
     0,
   );
   return sum % 10 === 0;
@@ -65,7 +65,7 @@ export function validateEntryDetail(entry: NachaEntryDetail): void {
     throw new Error('Receiving DFI routing number must be 8 digits');
   }
 
-  if (!/^[0-9]$/.test(entry.receivingDfiCheckDigit)) {
+  if (!/^\d$/.test(entry.receivingDfiCheckDigit)) {
     throw new Error('Receiving DFI check digit must be a single digit');
   }
 
@@ -90,7 +90,7 @@ export function validateEntryDetail(entry: NachaEntryDetail): void {
     throw new Error('Individual name is required');
   }
 
-  if (!/^[0-9]{15}$/.test(entry.traceNumber)) {
+  if (!/^\d{15}$/.test(entry.traceNumber)) {
     throw new Error('Trace number must be 15 digits');
   }
 
@@ -155,11 +155,11 @@ export function validateBatch(batch: NachaBatch): void {
     throw new Error('Company entry description is required');
   }
 
-  if (!/^[0-9]{6}$/.test(batch.effectiveEntryDate)) {
+  if (!/^\d{6}$/.test(batch.effectiveEntryDate)) {
     throw new Error('Effective entry date must be in YYMMDD format');
   }
 
-  if (!/^[0-9]{8}$/.test(batch.originatingDfiIdentification)) {
+  if (!/^\d{8}$/.test(batch.originatingDfiIdentification)) {
     throw new Error('Originating DFI identification must be 8 digits');
   }
 
@@ -178,7 +178,7 @@ export function validateBatch(batch: NachaBatch): void {
  * Validates a full NACHA file including all batches and entries.
  */
 export function validateFile(file: NachaFile): void {
-  if (!/^[ 0][0-9]{9}$/.test(file.immediateDestinationRoutingNumber)) {
+  if (!/^[ 0]\d{9}$/.test(file.immediateDestinationRoutingNumber)) {
     throw new Error(
       'Immediate destination routing number must be a 10-character field (leading space or zero followed by 9 digits)',
     );
@@ -191,7 +191,7 @@ export function validateFile(file: NachaFile): void {
     );
   }
 
-  if (!/^[ 0][0-9]{9}$/.test(file.immediateOriginRoutingNumber)) {
+  if (!/^[ 0]\d{9}$/.test(file.immediateOriginRoutingNumber)) {
     throw new Error(
       'Immediate origin routing number must be a 10-character field (leading space or zero followed by 9 digits)',
     );
@@ -212,11 +212,11 @@ export function validateFile(file: NachaFile): void {
     throw new Error('Immediate origin name is required');
   }
 
-  if (!/^[0-9]{6}$/.test(file.fileCreationDate)) {
+  if (!/^\d{6}$/.test(file.fileCreationDate)) {
     throw new Error('File creation date must be in YYMMDD format');
   }
 
-  if (file.fileCreationTime && !/^[0-9]{4}$/.test(file.fileCreationTime)) {
+  if (file.fileCreationTime && !/^\d{4}$/.test(file.fileCreationTime)) {
     throw new Error('File creation time must be in HHMM format');
   }
 
