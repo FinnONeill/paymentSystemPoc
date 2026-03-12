@@ -1,0 +1,23 @@
+version: '3.9'
+
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: nacha-localstack
+    ports:
+      - '4566:4566'          # Edge port for all services
+      - '4510-4559:4510-4559' # Additional service ports
+    environment:
+      # List of AWS services to start. You can trim this down if you don't need all of them.
+      - SERVICES=lambda,sns,sqs,apigateway,events,logs,cloudwatch,cloudformation,sts,iam,glue,kafka,msk
+      - EDGE_PORT=4566
+      - DEBUG=1
+      # Optional: set LOCALSTACK_AUTH_TOKEN in your environment if you use Pro/Teams
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN-}
+      # Match the default region used by the app/terraform
+      - AWS_DEFAULT_REGION=eu-west-1
+    volumes:
+      - './.localstack/data:/var/lib/localstack'
+      - '/var/run/docker.sock:/var/run/docker.sock'
+    restart: unless-stopped
+
